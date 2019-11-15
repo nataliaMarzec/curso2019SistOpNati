@@ -119,9 +119,9 @@ class IoInInterruptionHandler(AbstractInterruptionHandler):
         self.kernel.ioDeviceController.runOperation(pcb, operation)
         log.logger.info(self.kernel.ioDeviceController)
 #################################
-        procesosReading = self._kernel.pcbTable.pcbReading()
-        if (procesosReading != None ):
-            procesosReading.state = 
+        # procesosReading = self._kernel.pcbTable.pcbReading()
+        # if (procesosReading != None ):
+        #     procesosReading.state = 
 
 
 
@@ -165,8 +165,8 @@ class Kernel():
     def run(self, program):
         # Kernel.run() debe lanzar una interrupcion de #New para que se resuelva luego por el S.O. 
 
-        newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
-        self._interruptVector.handle(newIRQ)
+        # newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
+        # self._interruptVector.handle(newIRQ)
 
 
         base = self._loader.load(program)
