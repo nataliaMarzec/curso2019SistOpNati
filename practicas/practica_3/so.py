@@ -163,6 +163,12 @@ class Kernel():
 
     ## emulates a "system call" for programs execution
     def run(self, program):
+        # Kernel.run() debe lanzar una interrupcion de #New para que se resuelva luego por el S.O. 
+
+        newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
+        self._interruptVector.handle(newIRQ)
+
+
         base = self._loader.load(program)
         proceso = Pcb(program,base)
         self._pcbTable.table(proceso)
