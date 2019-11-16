@@ -1,4 +1,4 @@
-Starting emulator
+# Starting emulator (terminal1)
  ---- SWITCH ON ---- 
 ---- :::: START CLOCK  ::: -----
         --------------- tick: 0 ---------------

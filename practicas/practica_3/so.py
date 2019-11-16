@@ -32,10 +32,8 @@ class Program():
         expanded = []
         for i in instructions:
             if isinstance(i, list):
-                ## is a list of instructions
                 expanded.extend(i)
             else:
-                ## a single instr (a String)
                 expanded.append(i)
 
         ## now test if last instruction is EXIT
@@ -58,22 +56,25 @@ class IoDeviceController():
         self._waiting_queue = []
         self._currentPCB = None
 
+
     def runOperation(self, pcb, instruction):
         pair = {'pcb': pcb, 'instruction': instruction}
-        # append: adds the element at the end of the queue
-        self._waiting_queue.append(pair)
-        # try to send the instruction to hardware's device (if is idle)
-        self.__load_from_waiting_queue_if_apply()
+        pcb.state = WAITING
+        if self._device.is_idle : 
+            self._device.execute(instruction)
+            self._currentPCB = pcb
+        else:    
+            self._waiting_queue.append(pair)
+        
 
     def getFinishedPCB(self):
         finishedPCB = self._currentPCB
         self._currentPCB = None
-        self.__load_from_waiting_queue_if_apply()
         return finishedPCB
 
-    def __load_from_waiting_queue_if_apply(self):
+    #saca lo que esta en espera y lo ejecuta
+    def sacarYEjecutar(self):
         if (len(self._waiting_queue) > 0) and self._device.is_idle:
-            ## pop(): extracts (deletes and return) the first element in queue
             pair = self._waiting_queue.pop(0)
             #print(pair)
             pcb = pair['pcb']
@@ -107,52 +108,74 @@ class KillInterruptionHandler(AbstractInterruptionHandler):
         if (len (self.kernel._readyQueue) != 0):
             siguiente_pcb = self._kernel._readyQueue.pop(0)
             self._kernel._dispatcher.load(siguiente_pcb)        
-        elif self._kernel._pcbTable.pcbsTerminados(): 
+        elif self._kernel._pcbTable.todosLosPcbsTerminaron(): 
             HARDWARE.switchOff()
-            log.logger.info(" Program Finished ")
-class IoInInterruptionHandler(AbstractInterruptionHandler):
+            log.logger.info("GANTT: {}".format(self._kernel._gantt))
+            
 
+class IoInInterruptionHandler(AbstractInterruptionHandler):
     def execute(self, irq):
         operation = irq.parameters
-        pcb = {'pc': HARDWARE.cpu.pc} # porque hacemos esto ???
-        HARDWARE.cpu.pc = -1   ## dejamos el CPU IDLE
+        pcb = self._kernel._pcbTable.pcbRunnig()
+        self._kernel._dispatcher.save(pcb)
         self.kernel.ioDeviceController.runOperation(pcb, operation)
+        if (len(self._kernel._readyQueue) != 0):
+            pcbAEjecutar = self._kernel._readyQueue.pop(0)
+            self._kernel._dispatcher.load(pcbAEjecutar) 
+        
+        
         log.logger.info(self.kernel.ioDeviceController)
-#################################
-        # procesosReading = self._kernel.pcbTable.pcbReading()
-        # if (procesosReading != None ):
-        #     procesosReading.state = 
-
 
 
 class IoOutInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
-        pcb = self.kernel.ioDeviceController.getFinishedPCB()
-        HARDWARE.cpu.pc = pcb['pc']
+        pcb = self.kernel.ioDeviceController.getFinishedPCB() 
+        if (self._kernel._pcbTable.hayPcbRunnig()):
+            self._kernel._readyQueue.append(pcb)
+            pcb.state = READY
+
+        else:
+            self._kernel._dispatcher.load(pcb)
         log.logger.info(self.kernel.ioDeviceController)
 
+        self._kernel.ioDeviceController.sacarYEjecutar()
+
+class Gantt():
+    def __init__(self,kernel):
+        self._ticks = []
+        self._kernel = kernel
+   
+    def tick (self,tickNbr):
+        log.logger.info("guardando informacion de los estados de los PCBs en el tick N {}".format(tickNbr))
+        pcbYEstado = dict()
+        pcbTable = self._kernel._pcbTable.procesos
+        for pid,pcb in pcbTable.items():
+            pcbYEstado[pid] = pcb.state
+        self._ticks.append(pcbYEstado)
+  
+    def __repr__(self):
+        return tabulate(enumerate(self._ticks), tablefmt='grid')
 
 # emulates the core of an Operative System
 class Kernel():
-
     def __init__(self):
 
         self._loader = Loader()
         self._pcbTable = PcbTable()
         self._readyQueue = []
         self._dispatcher= Dispatcher()
+        self._gantt = Gantt(self)
+
+
         ## setup interruption handlers
         killHandler = KillInterruptionHandler(self)
         HARDWARE.interruptVector.register(KILL_INTERRUPTION_TYPE, killHandler)
-
         ioInHandler = IoInInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_IN_INTERRUPTION_TYPE, ioInHandler)
-
         ioOutHandler = IoOutInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_OUT_INTERRUPTION_TYPE, ioOutHandler)
-
-        ## controls the Hardware's I/O Device
+        HARDWARE.clock.addSubscriber(self._gantt)
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
 
@@ -160,51 +183,33 @@ class Kernel():
     def ioDeviceController(self):
         return self._ioDeviceController
           
-
-    ## emulates a "system call" for programs execution
     def run(self, program):
-        # Kernel.run() debe lanzar una interrupcion de #New para que se resuelva luego por el S.O. 
-
+        # Kernel.run() debe crear una interrupcion 
         # newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
         # self._interruptVector.handle(newIRQ)
 
-
         base = self._loader.load(program)
         proceso = Pcb(program,base)
-        self._pcbTable.table(proceso)
+        self._pcbTable.add(proceso)
         if self._pcbTable.pcbRunnig() == None:
-           self._dispatcher.load(proceso)
+            self._dispatcher.load(proceso)
         else:   
-           self._readyQueue.append(proceso)
-           proceso.state = READY
-           log.logger.info("DICCIONARIO: {}--proceso: {}, base={}".format(self._pcbTable,proceso, base))
-
-#         return tabulate(enumerate(self._cells), tablefmt='psql')
-        #return "Memoria = {mem}".format(mem=self._cells)
+            self._readyQueue.append(proceso)
+            proceso.state = READY
+            log.logger.info("DICCIONARIO: {}--proceso: {}, base={}".format(self._pcbTable,proceso, base))
+        
         log.logger.info(HARDWARE)
         
+        #return tabulate(enumerate(self._cells), tablefmt='psql')
+        #return "Memoria = {mem}".format(mem=self._cells)
 
     def run_batch(self,batch):
         for p in batch: 
             self.run(p)
 
-    #3.2 a modificar:necesito una sublista
-    def waiting_batch(self,batch):
-        for p in batch:
-
-            self.run(p)
 
     def __repr__(self):
         return "Kernel"
-
-    # def dispatcher
-    # if  # load || save 
-    # estado running
-    # cambiar estado en el pcb
-    # kill obtiene el pcb que esta corrientdo ahora
-    # y pone al save en terminal
-    # y despues hace el pop
-    # y lo manda al running
 
 class Loader():
 # Devuelve el base dir siguiente en donde va a comenzar el siguiente programa
@@ -225,28 +230,28 @@ class Pcb ():
         self._program_path = program.name
         self.pid =0
         self.pc = 0
-        self.state = 'NEW' 
+        self.state = 'NEW'
+        
 
     #   pcb contruiye en el run del kernel y pasa a la tabla
     #   el pcb table recibe el pcb que contruye pasa por parametro el pcb
-
-#   >>> lst = ["easy", "simple", "cheap", "free"]
-# >>> lst[-1]
-# 'free'
-# >>> 
+ 
 
 class PcbTable():
     def __init__(self):
         self._pid = 0 
         self.procesos = {}
+        
         #3.2
-        self.procesosEsperando = {}
-        # valor que se lo voy a pasar en el run intancia de la clase tabLa         
-    def table(self, pcb):
+      #  self.procesosCorriendo = {}
+        # valor que se lo voy a pasar en el run intancia de la clase tabLa   
+    #table
+    def add(self, pcb):
         _pidNuevo=self._pid
         self.procesos[_pidNuevo] = pcb
         pcb.pid = _pidNuevo
         self._pid +=1 
+
 
     def pcbRunnig(self):
         for k,v in self.procesos.items():
@@ -255,12 +260,19 @@ class PcbTable():
 
         return None
 
-    def pcbsTerminados(self):
+    def todosLosPcbsTerminaron(self):
         for k,v in self.procesos.items():
             if(v.state != TERMINATE):
                 return False
 
         return True
+
+
+    def hayPcbRunnig(self):
+        for k,v in self.procesos.items():
+            if(v.state == RUNNING):
+                return True
+        return False
 
     def pcbsReading(self):
         for k,v in self.procesos.items():
@@ -275,14 +287,6 @@ class PcbTable():
                 return False    
         return True 
 
-# recibe el pcb funcion 
-# construye el diccionario 
-#     def next_pid  
-
-#lo saqué de la memoria
-#  def __repr__(self):
-# log.logger.info("cpu - Exec: {instr}, PC={pc}".format(instr=self._ir, pc=self._pc))
-
 class Dispatcher():
     
     def load(self,pcb):
@@ -295,6 +299,7 @@ class Dispatcher():
         log.logger.info("SAVING:{}".format(pcb))
         pcb.pc = HARDWARE.cpu.pc
         HARDWARE.cpu.pc =-1
-      
+
+
 
 
