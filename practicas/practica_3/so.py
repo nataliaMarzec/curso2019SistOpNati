@@ -141,6 +141,23 @@ class IoOutInterruptionHandler(AbstractInterruptionHandler):
 
         self._kernel.ioDeviceController.sacarYEjecutar()
 
+class NewInterruptionHandler(AbstractInterruptionHandler):
+    def execute(self,irq):
+        program = irq.parameters
+        base = self.kernel._loader.load(program)
+        proceso = Pcb(program,base)
+        self.kernel._pcbTable.add(proceso)
+        if self.kernel._pcbTable.pcbRunnig() == None:
+            self.kernel._dispatcher.load(proceso)
+        else:   
+            self.kernel._readyQueue.append(proceso)
+            proceso.state = READY
+            log.logger.info("DICCIONARIO: {}--proceso: {}, base={}".format(self.kernel._pcbTable,proceso, base))
+        
+        log.logger.info(HARDWARE)
+        
+        #return tabulate(enumerate(self._cells), tablefmt='psql')
+        #return "Memoria = {mem}".format(mem=self._cells)
 class Gantt():
     def __init__(self,kernel):
         self._ticks = []
@@ -175,8 +192,16 @@ class Kernel():
         HARDWARE.interruptVector.register(IO_IN_INTERRUPTION_TYPE, ioInHandler)
         ioOutHandler = IoOutInterruptionHandler(self)
         HARDWARE.interruptVector.register(IO_OUT_INTERRUPTION_TYPE, ioOutHandler)
+
+        newInterruptionHandler = NewInterruptionHandler(self)
+        HARDWARE.interruptVector.register(NEW_INTERRUPTION_TYPE,newInterruptionHandler)
+
+
         HARDWARE.clock.addSubscriber(self._gantt)
+        
+        
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
+
 
 
     @property
@@ -184,25 +209,10 @@ class Kernel():
         return self._ioDeviceController
           
     def run(self, program):
-        # Kernel.run() debe crear una interrupcion 
-        # newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
-        # self._interruptVector.handle(newIRQ)
-
-        base = self._loader.load(program)
-        proceso = Pcb(program,base)
-        self._pcbTable.add(proceso)
-        if self._pcbTable.pcbRunnig() == None:
-            self._dispatcher.load(proceso)
-        else:   
-            self._readyQueue.append(proceso)
-            proceso.state = READY
-            log.logger.info("DICCIONARIO: {}--proceso: {}, base={}".format(self._pcbTable,proceso, base))
+        # Kernel.run() debe hacer una interrupcion new
+        newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
+        HARDWARE.interruptVector.handle(newIRQ)
         
-        log.logger.info(HARDWARE)
-        
-        #return tabulate(enumerate(self._cells), tablefmt='psql')
-        #return "Memoria = {mem}".format(mem=self._cells)
-
     def run_batch(self,batch):
         for p in batch: 
             self.run(p)
