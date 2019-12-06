@@ -61,7 +61,7 @@ class IoDeviceController():
     def runOperation(self, pcb, instruction):
         pair = {'pcb': pcb, 'instruction': instruction}
         pcb.state = WAITING
-        if self._device.is_idle : 
+        if HARDWARE.ioDevice.is_idle : 
             self._device.execute(instruction)
             self._currentPCB = pcb
         else:    
@@ -106,7 +106,7 @@ class KillInterruptionHandler(AbstractInterruptionHandler):
         if (procesoCorriendo != None): 
             procesoCorriendo.state = TERMINATE 
             self._kernel._dispatcher.save(procesoCorriendo)
-        if (len (self._kernel._scheduller._readyQueue) != 0):
+        if (len (self._kernel._scheduller._readyQueue.pcbs) != 0):
             # siguiente_pcb = self._kernel._readyQueue.pop(0)
             siguiente_pcb = self._kernel._scheduller.next()
             self._kernel._dispatcher.load(siguiente_pcb)        
@@ -121,7 +121,7 @@ class IoInInterruptionHandler(AbstractInterruptionHandler):
         pcb = self._kernel._pcbTable.pcbRunnig()
         self._kernel._dispatcher.save(pcb)
         self.kernel.ioDeviceController.runOperation(pcb, operation)
-        if (len(self._kernel._scheduller._readyQueue) != 0):
+        if (len(self._kernel._scheduller._readyQueue.pcbs) != 0):
             pcbAEjecutar = self._kernel._scheduller.next()
             self._kernel._dispatcher.load(pcbAEjecutar) 
         
@@ -133,23 +133,28 @@ class IoOutInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
         pcb = self.kernel.ioDeviceController.getFinishedPCB() 
-        if (self._kernel._pcbTable.hayPcbRunnig()):
-            # self._kernel._readyQueue.append(pcb)
-            self._kernel._scheduller.add(pcb)
-            pcb.state = READY
-
-        else:
-            self._kernel._dispatcher.load(pcb)
-        log.logger.info(self.kernel.ioDeviceController)
-
         self._kernel.ioDeviceController.sacarYEjecutar()
+        self._kernel._scheduller.add(pcb)
+        
+        log.logger.info(self.kernel.ioDeviceController)
+        
+        # if (self._kernel._pcbTable.hayPcbRunnig()):
+            # self._kernel._readyQueue.append(pcb)
+            # self._kernel._scheduller.add(pcb)
+            #  pcb.state = READY
+
+        # else:
+            # self._kernel._dispatcher.load(pcb)
+
 
 class NewInterruptionHandler(AbstractInterruptionHandler):
     def execute(self,irq):
-        program = irq.parameters
+        program = irq.parameters["programa"]
+        priority= irq.parameters["prioridad"]
         base = self.kernel._loader.load(program)
-        proceso = Pcb(program,base)
+        proceso = Pcb(program,base,priority)
         self.kernel._pcbTable.add(proceso)
+     
         if self.kernel._pcbTable.pcbRunnig() == None:
             self.kernel._dispatcher.load(proceso)
         else:   
@@ -162,6 +167,7 @@ class NewInterruptionHandler(AbstractInterruptionHandler):
         
         #return tabulate(enumerate(self._cells), tablefmt='psql')
         #return "Memoria = {mem}".format(mem=self._cells)
+
 class Gantt():
     def __init__(self,kernel):
         self._ticks = []
@@ -178,34 +184,100 @@ class Gantt():
     def __repr__(self):
         return tabulate(enumerate(self._ticks), tablefmt='grid')
 
-class Scheduller():
+
+### Cada vez que tengamos que agregar un pcb a la readyQueue 
+# ### tenemos que preguntarle a scheduler si debemos expropiarpcbToAdd 
+# # el pcb que acaba de “pasar” a readypcbInCPU  = pcbTable.runningPCBIf 
+#  scheduler.mustExpropiate(pcbInCPU, pcbToAdd):## hay que expropiar   
+# pcbExpropiado = Sacar el PCB actual del CPUagregar pcbExpropiado a la cola de readyCargar
+#  en el CPU el pcbToAdd else :agreqar pcbToAdd a la cola de ready del scheduler
+
+
+class ReadyQueue():
     def __init__(self):
-        _readyQueue = []
-    
-    # @abstractmethod
+        self.pcbs = []
+    def agregar (self,pcb):
+        self.pcbs.append(pcb)
+    def sacar (self):
+        return self.pcbs.pop(0)
+    def procesos(self):
+        return self.pcbs
+
+
+class Scheduller():
+
+    def __init__(self,kernel):
+        self._readyQueue = ReadyQueue()
+        self._kernel=kernel
+ 
     def add(self, pcb):
         pass
-    # @abstractmethod
+
     def next(self):
-        pass
-    # @abstractmethod
-    def esExpropiativa(self):
-        pass
+       return self._readyQueue.sacar() 
+
+    # def debeExpropiar(self,pcbEnCpu,pcbParaAgregar):
+    #     pass
 
     def execute(self):
         log.logger.error("-- EXECUTE MUST BE OVERRIDEN in class {classname}".format(classname=self.__class__.__name__))
+# class RoundRobin(Scheduller):
+#     HARDWARE.timer.quantum = aQuantum
+class PrioridadExpropiativa(Scheduller):
+        def add(self,pcb):          
+            if (self._kernel._pcbTable.pcbRunnig()==None):
+                log.logger.error("--pcbRunnig {}".format(self._kernel._pcbTable.pcbRunnig()))
+                self._kernel._dispatcher.load(pcb)
+            else:
+                self.expropiar(pcb)
 
-
-    # index = 0
-    # while Scheduller._readyQueue[index].priority<pcb.priority:
-    #     index = index + 1
-
-    # def insert(index,pcb):
+        def ordenar(self,pcb):
+            pcb.state = READY
+            index = 0
+            while len(self._readyQueue.pcbs) and self._readyQueue.pcbs[index].priority < pcb.priority:
+                index = index + 1
+            self._readyQueue.pcbs.insert(index,pcb)
     
-        
+
+##none?????
+        def expropiar(self,pcb):
+            pcbCorriendo = self._kernel._pcbTable.pcbRunnig()
+            
+            if pcb.priority < pcbCorriendo.priority:
+                self._kernel._dispatcher.save(pcbCorriendo)
+                self.ordenar(pcbCorriendo)
+                self._kernel._dispatcher.load(pcb)
+            else:
+                self.ordenar(pcb)
+            
+        def _repr_(self):
+            return "PrioridadExpropiativa"
+
+class PrioridadSinExpropiar(Scheduller):
+
+    def add(self,pcb):
+        if(self._kernel._pcbTable.pcbRunnig() == None):
+          self._kernel._dispatcher.load(pcb)
+        else:
+            pcb.state =READY
+            index = 0
+            while len(self._readyQueue.pcbs) and self._readyQueue.pcbs[index].priority < pcb.priority:
+                index = index + 1
+            self._readyQueue.pcbs.insert(index,pcb)
+
+    
+    def _repr_(self):
+        return "PrioridadSinExpropiar"
+   
+
+    # def isEmptyReadyQueue(self):
+    #     isEmpty = True
+    #     for i in self._readyQueue:
+    #         if len(i) != 0:
+    #            isEmpty = False
+    #     return isEmpty
+  
 class SchedullerFifo(Scheduller):
-    def __init__(self):
-       self._readyQueue = []
 
     def add(self, pcb):
         self._readyQueue.append(pcb)
@@ -225,7 +297,10 @@ class Kernel():
         # self._readyQueue = []
         self._dispatcher= Dispatcher()
         self._gantt = Gantt(self)
-        self._scheduller = SchedullerFifo()
+        # self._scheduller = SchedullerFifo(self)
+        # self._scheduller = PrioridadSinExpropiar(self)
+        self._scheduller = PrioridadExpropiativa(self)
+        # self._scheduller = RoundRobin(self) 
 
         ## setup interruption handlers
         killHandler = KillInterruptionHandler(self)
@@ -244,17 +319,19 @@ class Kernel():
         
         self._ioDeviceController = IoDeviceController(HARDWARE.ioDevice)
 
-
+#sineXPROPIAR AFECTA A LA READYQUEUE
+#EXPROPIAR AFECTA A PROCESO QUE ESTA CORRIENDO
 
     @property
     def ioDeviceController(self):
         return self._ioDeviceController
           
-    def run(self, program):
-        # Kernel.run() debe hacer una interrupcion new
-        # newIRQ = IRQ(NEW_INTERRUPTION_TYPE,{"program":program,"priority":priority})
-        newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
+    def run(self,program,priority):
+        newIRQ = IRQ(NEW_INTERRUPTION_TYPE,{"programa":program,"prioridad":priority})
         HARDWARE.interruptVector.handle(newIRQ)
+        #Fifo:
+        # newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
+     
         
     def run_batch(self,batch):
         for p in batch: 
@@ -264,8 +341,9 @@ class Kernel():
     def __repr__(self):
         return "Kernel"
 
+
 class Loader():
-# Devuelve el base dir siguiente en donde va a comenzar el siguiente programa
+# CON PROGRAM: Devuelve el base dir siguiente en donde va a comenzar el siguiente programa
     def __init__(self):
         self.next_basedir = 0
         #conoce el tamaño de cada proceso y al sumar uno pasa al otro proceso
@@ -278,14 +356,13 @@ class Loader():
         return (self.next_basedir - progSize)
 
 class Pcb ():
-    def __init__(self,program,basedir):
+    def __init__(self,program,basedir,priority):
         self._basedir = basedir
         self._program_path = program.name
         self.pid =0
         self.pc = 0
         self.state = 'NEW'
-        
-
+        self.priority = priority
     #   pcb contruiye en el run del kernel y pasa a la tabla
     #   el pcb table recibe el pcb que contruye pasa por parametro el pcb
  
@@ -295,15 +372,13 @@ class PcbTable():
         self._pid = 0 
         self.procesos = {}
         
-        #3.2
-      #  self.procesosCorriendo = {}
-        # valor que se lo voy a pasar en el run intancia de la clase tabLa   
     #table
     def add(self, pcb):
         _pidNuevo=self._pid
         self.procesos[_pidNuevo] = pcb
         pcb.pid = _pidNuevo
         self._pid +=1 
+        self.prioridad = pcb.priority
 
 
     def pcbRunnig(self):
@@ -354,4 +429,80 @@ class Dispatcher():
         pcb.pc = HARDWARE.cpu.pc
         HARDWARE.cpu.pc =-1
 
+        # for i in self._readyQueue:
+        #     if (len(i) != i.pop(0)):
+        #         nextPcb = i.pop(0)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        
+    # def addAndReturn(self, aPcb, anotherPCB):
+    #     pcbtoCpu   = anotherPCB
+    #     pcbToQueue = aPcb
+    #     if aPcb.priority.value < anotherPCB.priority.value:
+    #         pcbtoCpu   = aPcb
+    #         pcbToQueue = anotherPCB
+    #     self.add(pcbToQueue)
+    #     return pcbtoCpu
