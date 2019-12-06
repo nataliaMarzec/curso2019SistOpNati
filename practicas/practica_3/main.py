@@ -21,15 +21,16 @@ if __name__ == '__main__':
     kernel = Kernel()
 
     ##  create a program
-    prg = Program("test.exe", [ASM.CPU(2), ASM.IO(), ASM.CPU(3), ASM.IO(), ASM.CPU(3)])
-    
+    prg = Program("test.exe", [ASM.CPU(2), ASM.IO(), ASM.CPU(3), ASM.IO(), ASM.CPU(3)]) 
     prg1 = Program("prg1.exe", [ASM.CPU(1),ASM.IO(), ASM.CPU(1)])
     prg2 = Program("prg2.exe", [ASM.CPU(2),ASM.IO(), ASM.CPU(2)])
 
     batch = [prg1, prg2]
     
     # execute the program
-    # kernel.run(prg)
+    # kernel.run(prg,2)
+    # kernel.run(prg1,4)
+    # kernel.run(prg2,3)
     kernel.run_batch(batch)
 
 
