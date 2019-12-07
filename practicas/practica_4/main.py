@@ -22,7 +22,8 @@ if __name__ == '__main__':
 
     # Ahora vamos a intentar ejecutar 3 programas a la vez
     ##################
-    prg3 = Program("prg3.exe", [ASM.CPU(4), ASM.IO(), ASM.CPU(3)])
+    
+    prg3 = Program("prg3.exe", [ASM.CPU(8), ASM.IO(), ASM.CPU(3)])
     prg1 = Program("prg1.exe", [ASM.CPU(2), ASM.IO(), ASM.CPU(3), ASM.IO(), ASM.CPU(3)])
     prg2 = Program("prg2.exe", [ASM.CPU(7)])
 
