@@ -103,11 +103,12 @@ class AbstractInterruptionHandler():
 class KillInterruptionHandler(AbstractInterruptionHandler):
     def execute(self, irq):
         log.logger.info("programa finalizado")
-        procesoCorriendo = self._kernel._pcbTable.pcbRunnig()
-        if (procesoCorriendo != None): 
-            procesoCorriendo.state = TERMINATE 
+        if self._kernel._pcbTable.hayPcbRunnig():
+            procesoCorriendo = self._kernel._pcbTable.pcbRunnig() 
             self._kernel._dispatcher.save(procesoCorriendo)
-        if (len (self._kernel._scheduller._readyQueue.pcbs) >=1):
+            procesoCorriendo.state = TERMINATE 
+            
+        if (len (self._kernel._scheduller._readyQueue.procesos()) >=1):
             # siguiente_pcb = self._kernel._readyQueue.pop(0)
             siguiente_pcb = self._kernel._scheduller.next()
             self._kernel._dispatcher.load(siguiente_pcb)        
@@ -134,9 +135,9 @@ class IoOutInterruptionHandler(AbstractInterruptionHandler):
 
     def execute(self, irq):
         pcb = self.kernel.ioDeviceController.getFinishedPCB() 
-        self._kernel.ioDeviceController.sacarYEjecutar()
         self._kernel._scheduller.add(pcb)
-        
+        self._kernel.ioDeviceController.sacarYEjecutar()
+       
         log.logger.info(self.kernel.ioDeviceController)
         
         # if (self._kernel._pcbTable.hayPcbRunnig()):
@@ -232,9 +233,8 @@ class RoundRobin(Scheduller):
         if self._kernel._pcbTable.pcbRunnig() != None:
             self._readyQueue.agregar(pcb)
         else:
-            self._kernel._dispatcher.save(pcb)
+            self._kernel._dispatcher.load(pcb)
         
-
     def expropiar (self,pcb):
         if len(self._kernel._scheduller._readyQueue.procesos()) >= 1:
             if self._kernel._pcbTable.pcbRunnig() != None:
@@ -324,9 +324,9 @@ class Kernel():
         self._gantt = Gantt(self)
         # self._scheduller = SchedullerFifo(self)
         # self._scheduller = PrioridadSinExpropiar(self)
-        self._scheduller = PrioridadExpropiativa(self)
-        # self._scheduller = RoundRobin(self) 
-        # HARDWARE.timer.quantum=3
+        # self._scheduller = PrioridadExpropiativa(self)
+        self._scheduller = RoundRobin(self) 
+        HARDWARE.timer.quantum=3
 
         ## setup interruption handlers
         killHandler = KillInterruptionHandler(self)
@@ -501,26 +501,3 @@ class Dispatcher():
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        
-    # def addAndReturn(self, aPcb, anotherPCB):
-    #     pcbtoCpu   = anotherPCB
-    #     pcbToQueue = aPcb
-    #     if aPcb.priority.value < anotherPCB.priority.value:
-    #         pcbtoCpu   = aPcb
-    #         pcbToQueue = anotherPCB
-    #     self.add(pcbToQueue)
-    #     return pcbtoCpu
