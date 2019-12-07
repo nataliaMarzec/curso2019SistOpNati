@@ -111,6 +111,7 @@ class KillInterruptionHandler(AbstractInterruptionHandler):
         if (len (self._kernel._scheduller._readyQueue.procesos()) >=1):
             # siguiente_pcb = self._kernel._readyQueue.pop(0)
             siguiente_pcb = self._kernel._scheduller.next()
+            log.logger.info("siguiente{}".format(siguiente_pcb))
             self._kernel._dispatcher.load(siguiente_pcb)        
         elif self._kernel._pcbTable.todosLosPcbsTerminaron(): 
             HARDWARE.switchOff()
@@ -216,6 +217,7 @@ class Scheduller():
     def add(self, pcb):
         pass
 
+
     def next(self):
        return self._readyQueue.sacar() 
 
@@ -238,12 +240,16 @@ class RoundRobin(Scheduller):
     def expropiar (self,pcb):
         if len(self._kernel._scheduller._readyQueue.procesos()) >= 1:
             if self._kernel._pcbTable.pcbRunnig() != None:
+            # if not self._kernel._pcbTable.hayPcbRunnig():
                 corriendo= self._kernel._pcbTable.pcbRunnig()
                 # log.logger.info("--pcbRunnig {}".format(corriendo)
                 self._kernel._dispatcher.save(corriendo)
                 self.add(corriendo)
                 elSiguiente = self.next()
                 self._kernel._dispatcher.load(elSiguiente)
+
+    def _repr_(self):
+        return "RoundRobin"
 
 class TimeHandler(AbstractInterruptionHandler):
     def execute(self, irq):
@@ -252,7 +258,6 @@ class TimeHandler(AbstractInterruptionHandler):
                 log.logger.error("--pcbRunnig {}".format(self._kernel._pcbTable.pcbRunnig()))
                 pcbCorriendo = self._kernel._pcbTable.pcbRunnig()
                 self._kernel._scheduller.expropiar(pcbCorriendo)
-        # self._kernel._scheduller.next()
         HARDWARE.timer.reset()
 
 class PrioridadExpropiativa(Scheduller):
@@ -260,6 +265,7 @@ class PrioridadExpropiativa(Scheduller):
             if not self._kernel._pcbTable.hayPcbRunnig():   
                 log.logger.error("--pcbRunnig {}".format(self._kernel._pcbTable.pcbRunnig()))
                 self._kernel._dispatcher.load(pcb)
+            # self.ejecutarPcbCorriendo(pcb)
             else:
                 self.expropiar(pcb)
 
@@ -324,9 +330,9 @@ class Kernel():
         self._gantt = Gantt(self)
         # self._scheduller = SchedullerFifo(self)
         # self._scheduller = PrioridadSinExpropiar(self)
-        # self._scheduller = PrioridadExpropiativa(self)
-        self._scheduller = RoundRobin(self) 
-        HARDWARE.timer.quantum=3
+        self._scheduller = PrioridadExpropiativa(self)
+        # self._scheduller = RoundRobin(self) 
+        # HARDWARE.timer.quantum=3
 
         ## setup interruption handlers
         killHandler = KillInterruptionHandler(self)
@@ -356,9 +362,7 @@ class Kernel():
         newIRQ = IRQ(NEW_INTERRUPTION_TYPE,{"programa":program,"prioridad":priority})
         HARDWARE.interruptVector.handle(newIRQ)
         #Fifo:
-        # newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)
-     
-        
+        # newIRQ = IRQ(NEW_INTERRUPTION_TYPE, program)      
     def run_batch(self,batch):
         for p in batch: 
             self.run(p)
@@ -437,13 +441,12 @@ class PcbTable():
                 return False    
         return True 
 
-class Dispatcher():
-    
+class Dispatcher():   
     def load(self,pcb):
         log.logger.info("LOADING:{}".format(pcb))
         HARDWARE.cpu.pc = pcb.pc
         HARDWARE.mmu.baseDir = pcb._basedir
-        pcb.state = 'RUNNING'  
+        pcb.state = RUNNING  
         log.logger.info(f"Proceso Corriendo: {pcb}")
         HARDWARE.timer.reset()
   
