@@ -256,8 +256,8 @@ class TimeHandler(AbstractInterruptionHandler):
         HARDWARE.timer.reset()
 
 class PrioridadExpropiativa(Scheduller):
-        def add(self,pcb):          
-            if (self._kernel._pcbTable.pcbRunnig()==None):
+        def add(self,pcb):       
+            if not self._kernel._pcbTable.hayPcbRunnig():   
                 log.logger.error("--pcbRunnig {}".format(self._kernel._pcbTable.pcbRunnig()))
                 self._kernel._dispatcher.load(pcb)
             else:
@@ -323,8 +323,8 @@ class Kernel():
         self._dispatcher= Dispatcher()
         self._gantt = Gantt(self)
         # self._scheduller = SchedullerFifo(self)
-        self._scheduller = PrioridadSinExpropiar(self)
-        # self._scheduller = PrioridadExpropiativa(self)
+        # self._scheduller = PrioridadSinExpropiar(self)
+        self._scheduller = PrioridadExpropiativa(self)
         # self._scheduller = RoundRobin(self) 
         # HARDWARE.timer.quantum=3
 
