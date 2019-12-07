@@ -287,10 +287,10 @@ class PrioridadExpropiativa(Scheduller):
 class PrioridadSinExpropiar(Scheduller):
 
     def add(self,pcb):
-        if(self._kernel._pcbTable.pcbRunnig() == None):
-          self._kernel._dispatcher.load(pcb)
+        if not self._kernel._pcbTable.hayPcbRunnig():
+            self._kernel._dispatcher.load(pcb)
         else:
-            pcb.state =READY
+            pcb.state = READY
             index = 0
             while len(self._readyQueue.pcbs) and self._readyQueue.pcbs[index].priority < pcb.priority:
                 index = index + 1
@@ -300,14 +300,6 @@ class PrioridadSinExpropiar(Scheduller):
     def _repr_(self):
         return "PrioridadSinExpropiar"
    
-
-    # def isEmptyReadyQueue(self):
-    #     isEmpty = True
-    #     for i in self._readyQueue:
-    #         if len(i) != 0:
-    #            isEmpty = False
-    #     return isEmpty
-  
 class SchedullerFifo(Scheduller):
 
     def add(self, pcb):
@@ -322,7 +314,6 @@ class SchedullerFifo(Scheduller):
     def __repr__(self):
         return "FIFO"
 
-# emulates the core of an Operative System
 class Kernel():
     def __init__(self):
 
@@ -331,8 +322,8 @@ class Kernel():
         # self._readyQueue = []
         self._dispatcher= Dispatcher()
         self._gantt = Gantt(self)
-        self._scheduller = SchedullerFifo(self)
-        # self._scheduller = PrioridadSinExpropiar(self)
+        # self._scheduller = SchedullerFifo(self)
+        self._scheduller = PrioridadSinExpropiar(self)
         # self._scheduller = PrioridadExpropiativa(self)
         # self._scheduller = RoundRobin(self) 
         # HARDWARE.timer.quantum=3
