@@ -50,7 +50,6 @@ class IoDeviceController():
         self._waiting_queue = []
         self._currentPCB = None
 
-
     def runOperation(self, pcb, instruction):
         pair = {'pcb': pcb, 'instruction': instruction}
         pcb.state = WAITING
@@ -130,6 +129,16 @@ class IoOutInterruptionHandler(AbstractInterruptionHandler):
         self._kernel.ioDeviceController.sacarYEjecutar()
        
         log.logger.info(self.kernel.ioDeviceController)
+
+class TimeHandler(AbstractInterruptionHandler):
+    def execute(self, irq):
+        if len (self._kernel._scheduller._readyQueue.procesos()) >= 1:
+            if self._kernel._pcbTable.pcbRunnig() != None:
+                log.logger.error("--pcbRunnig {}".format(self._kernel._pcbTable.pcbRunnig()))
+                pcbCorriendo = self._kernel._pcbTable.pcbRunnig()
+                self._kernel._scheduller.expropiar(pcbCorriendo)
+        HARDWARE.timer.reset()
+
 
 class NewInterruptionHandler(AbstractInterruptionHandler):
     def execute(self,irq):
@@ -217,14 +226,6 @@ class RoundRobin(Scheduller):
     def _repr_(self):
         return "RoundRobin"
 
-class TimeHandler(AbstractInterruptionHandler):
-    def execute(self, irq):
-        if len (self._kernel._scheduller._readyQueue.procesos()) >= 1:
-            if self._kernel._pcbTable.pcbRunnig() != None:
-                log.logger.error("--pcbRunnig {}".format(self._kernel._pcbTable.pcbRunnig()))
-                pcbCorriendo = self._kernel._pcbTable.pcbRunnig()
-                self._kernel._scheduller.expropiar(pcbCorriendo)
-        HARDWARE.timer.reset()
 
 class PrioridadExpropiativa(Scheduller):
         def add(self,pcb):       
@@ -293,11 +294,11 @@ class Kernel():
         # self._readyQueue = []
         self._dispatcher= Dispatcher()
         self._gantt = Gantt(self)
-        self._scheduller = SchedullerFifo(self)
+        # self._scheduller = SchedullerFifo(self)
         # self._scheduller = PrioridadSinExpropiar(self)
         # self._scheduller = PrioridadExpropiativa(self)
-        # self._scheduller = RoundRobin(self) 
-        # HARDWARE.timer.quantum=3
+        self._scheduller = RoundRobin(self) 
+        HARDWARE.timer.quantum=3
 
         killHandler = KillInterruptionHandler(self)
         HARDWARE.interruptVector.register(KILL_INTERRUPTION_TYPE, killHandler)
